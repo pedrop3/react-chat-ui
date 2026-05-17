@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Python AI Chat",
+    "slug": "react-chat-ui",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "chatui",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f1115"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pythonai.chatui",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Permitir acesso à galeria para anexar imagens no chat.",
+        "NSCameraUsageDescription": "Permitir acesso à câmera para tirar fotos no chat."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f1115"
+      },
+      "package": "com.pythonai.chatui",
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O app acessa suas fotos para que você possa anexar imagens no chat."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:8000",
+      "streamingEnabled": true
+    }
+  }
+}
