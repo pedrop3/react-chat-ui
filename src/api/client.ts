@@ -59,12 +59,17 @@ export async function sendChatRest(
 }
 
 /**
- * Envia mensagens via streaming (Server-Sent Events).
- * Implementação manual porque o RN não suporta EventSource nativamente.
+ * Envia mensagens via streaming usando o protocolo AG-UI sobre SSE.
  *
- * Espera eventos no formato:
- *   data: {"delta": "texto"}
- *   data: [DONE]
+ * Eventos esperados do backend:
+ *   RUN_STARTED          – início do run
+ *   TEXT_MESSAGE_START   – início de um bloco de texto
+ *   TEXT_MESSAGE_DELTA   – chunk de texto { delta: string }
+ *   TEXT_MESSAGE_END     – fim do bloco de texto
+ *   TOOL_CALL_START      – tool call iniciada { toolCallId, toolCallName }
+ *   TOOL_CALL_END        – tool call concluída { toolCallId }
+ *   RUN_FINISHED         – run concluído (equivale ao antigo [DONE])
+ *   RUN_ERROR            – erro { message }
  */
 export async function sendChatStream(
   conversationId: string,
@@ -104,25 +109,46 @@ export async function sendChatStream(
       const rawEvent = buffer.slice(0, idx);
       buffer = buffer.slice(idx + 2);
       const lines = rawEvent.split('\n');
+
       for (const line of lines) {
         if (!line.startsWith('data:')) continue;
         const payload = line.slice(5).trim();
         if (!payload) continue;
-        if (payload === '[DONE]') {
-          return { text: full };
-        }
+
+        // Fazer parse do evento AG-UI
+        let ev: Record<string, unknown>;
         try {
-          const json = JSON.parse(payload) as { delta?: string; content?: string };
-          const delta = json.delta ?? json.content ?? '';
+          ev = JSON.parse(payload) as Record<string, unknown>;
+        } catch {
+          continue; // linha não é JSON válido — ignorar
+        }
+
+        const evType = ev.type as string | undefined;
+
+        if (evType === 'TEXT_MESSAGE_DELTA') {
+          const delta = (ev.delta as string) ?? '';
           if (delta) {
             full += delta;
             opts.onChunk?.(delta, full);
           }
-        } catch {
-          // texto puro como fallback
-          full += payload;
-          opts.onChunk?.(payload, full);
+        } else if (evType === 'TOOL_CALL_START') {
+          opts.onToolCall?.({
+            id: (ev.toolCallId as string) ?? '',
+            name: (ev.toolCallName as string) ?? '',
+            status: 'running',
+          });
+        } else if (evType === 'TOOL_CALL_END') {
+          opts.onToolCall?.({
+            id: (ev.toolCallId as string) ?? '',
+            name: '',
+            status: 'done',
+          });
+        } else if (evType === 'RUN_FINISHED') {
+          return { text: full };
+        } else if (evType === 'RUN_ERROR') {
+          throw new Error((ev.message as string) ?? 'Stream error');
         }
+        // TEXT_MESSAGE_START, TEXT_MESSAGE_END, RUN_STARTED: sem ação no cliente
       }
     }
   }

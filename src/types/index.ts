@@ -10,6 +10,14 @@ export interface Attachment {
   base64?: string;
 }
 
+export interface ToolCallInfo {
+  /** id único gerado pelo backend (tool_call_id do LangChain) */
+  id: string;
+  /** nome da tool, ex: "rag_search", "web_fetch" */
+  name: string;
+  status: 'running' | 'done';
+}
+
 export interface Message {
   id: string;
   role: Role;
@@ -20,6 +28,8 @@ export interface Message {
   pending?: boolean;
   /** opcional, caso o backend retorne erro */
   error?: string;
+  /** tool calls AG-UI emitidos durante a geração desta mensagem */
+  toolCalls?: ToolCallInfo[];
 }
 
 export interface Conversation {
@@ -34,6 +44,8 @@ export interface SendOptions {
   signal?: AbortSignal;
   /** chamado a cada chunk recebido no modo streaming */
   onChunk?: (delta: string, fullText: string) => void;
+  /** chamado quando uma tool call começa (status='running') ou termina (status='done') */
+  onToolCall?: (info: ToolCallInfo) => void;
 }
 
 export interface SendResult {

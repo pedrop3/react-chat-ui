@@ -9,7 +9,7 @@ import React, {
   useState,
 } from 'react';
 import uuid from 'react-native-uuid';
-import { Attachment, Conversation, Message } from '@/types';
+import { Attachment, Conversation, Message, ToolCallInfo } from '@/types';
 import { loadConversations, saveConversations } from '@/storage/conversations';
 import { sendChatRest, sendChatStream } from '@/api/client';
 import { STREAMING_ENABLED } from '@/api/config';
@@ -183,11 +183,37 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         );
       };
 
+      const onToolCall = (info: ToolCallInfo) => {
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== convId) return c;
+            return {
+              ...c,
+              messages: c.messages.map((m) => {
+                if (m.id !== assistantMsg.id) return m;
+                const existing = m.toolCalls ?? [];
+                if (info.status === 'running') {
+                  return { ...m, toolCalls: [...existing, info] };
+                }
+                // status === 'done': marcar a entrada existente como concluída
+                return {
+                  ...m,
+                  toolCalls: existing.map((tc) =>
+                    tc.id === info.id ? { ...tc, status: 'done' as const } : tc,
+                  ),
+                };
+              }),
+            };
+          }),
+        );
+      };
+
       try {
         const result = STREAMING_ENABLED
           ? await sendChatStream(convId, history, attachments, {
               signal: controller.signal,
               onChunk,
+              onToolCall,
             })
           : await sendChatRest(convId, history, attachments, {
               signal: controller.signal,

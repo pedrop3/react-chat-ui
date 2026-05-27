@@ -1,8 +1,17 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { Message } from '@/types';
 import { colors, radius, spacing } from '@/theme/colors';
+
+const TOOL_ICONS: Record<string, string> = {
+  rag_search: '🔍',
+  web_search: '🌐',
+  web_fetch: '📄',
+  kg_search_entity: '🔗',
+  kg_neighbors: '🔗',
+  kg_extract: '📊',
+};
 
 interface Props {
   message: Message;
@@ -38,6 +47,24 @@ export function MessageBubble({ message }: Props) {
             )}
           </View>
         ))}
+
+        {/* Tool call badges — visíveis apenas em mensagens do assistente */}
+        {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
+          <View style={styles.toolCallList}>
+            {message.toolCalls.map((tc) => (
+              <View key={tc.id} style={styles.toolCallBadge}>
+                {tc.status === 'running' ? (
+                  <ActivityIndicator size="small" color={colors.primary} style={styles.tcSpinner} />
+                ) : (
+                  <Text style={styles.tcCheck}>✓</Text>
+                )}
+                <Text style={[styles.tcName, tc.status === 'done' && styles.tcNameDone]}>
+                  {TOOL_ICONS[tc.name] ?? '⚙'} {tc.name}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {hasError ? (
           <Text style={styles.errorText}>Erro: {message.error}</Text>
@@ -246,5 +273,42 @@ const styles = StyleSheet.create({
   attachmentName: {
     color: colors.textMuted,
     fontSize: 13,
+  },
+  toolCallList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: spacing.xs,
+  },
+  toolCallBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    marginRight: spacing.xs,
+    marginBottom: 4,
+  },
+  tcSpinner: {
+    width: 14,
+    height: 14,
+    marginRight: 5,
+  },
+  tcCheck: {
+    color: colors.success,
+    fontSize: 12,
+    lineHeight: 16,
+    width: 14,
+    textAlign: 'center',
+    marginRight: 5,
+  },
+  tcName: {
+    color: colors.primary,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  tcNameDone: {
+    color: colors.textMuted,
   },
 });
