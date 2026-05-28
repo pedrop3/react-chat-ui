@@ -18,6 +18,20 @@ export interface ToolCallInfo {
   status: 'running' | 'done';
 }
 
+/** Uma opção dentro de um passo de clarificação (Human-in-the-Loop). */
+export interface InterruptOption {
+  id: string;
+  label: string;
+}
+
+/** Informação de um interrupt AG-UI — pausou o grafo à espera de escolha. */
+export interface InterruptInfo {
+  question: string;
+  options: InterruptOption[];
+  /** Preenchido quando o utilizador já escolheu; mostra a seleção em destaque. */
+  selected?: string;
+}
+
 export interface Message {
   id: string;
   role: Role;
@@ -30,6 +44,8 @@ export interface Message {
   error?: string;
   /** tool calls AG-UI emitidos durante a geração desta mensagem */
   toolCalls?: ToolCallInfo[];
+  /** preenchido quando o backend emite um evento INTERRUPT (clarificação) */
+  interrupt?: InterruptInfo;
 }
 
 export interface Conversation {
@@ -46,6 +62,8 @@ export interface SendOptions {
   onChunk?: (delta: string, fullText: string) => void;
   /** chamado quando uma tool call começa (status='running') ou termina (status='done') */
   onToolCall?: (info: ToolCallInfo) => void;
+  /** chamado quando o backend emite um evento INTERRUPT (Human-in-the-Loop) */
+  onInterrupt?: (info: InterruptInfo) => void;
 }
 
 export interface SendResult {

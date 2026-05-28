@@ -23,5 +23,6 @@ export const STREAMING_ENABLED: boolean = readBoolEnv(
 export const ENDPOINTS = {
   chat: '/chat',
   chatStream: '/chat/stream',
+  chatResume: '/chat/resume',
   upload: '/upload',
 };

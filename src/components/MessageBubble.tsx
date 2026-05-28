@@ -1,16 +1,18 @@
 import React from 'react';
-import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { Message } from '@/types';
 import { colors, radius, spacing } from '@/theme/colors';
+import { useChat } from '@/context/ChatContext';
 
 const TOOL_ICONS: Record<string, string> = {
-  rag_search: '🔍',
-  web_search: '🌐',
-  web_fetch: '📄',
+  rag_search:       '🔍',
+  web_search:       '🌐',
+  web_fetch:        '📄',
+  compare_products: '⚖️',
   kg_search_entity: '🔗',
-  kg_neighbors: '🔗',
-  kg_extract: '📊',
+  kg_neighbors:     '🔗',
+  kg_extract:       '📊',
 };
 
 interface Props {
@@ -20,7 +22,8 @@ interface Props {
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === 'user';
   const hasError = !!message.error;
-  const isEmpty = !message.content && !message.error && message.pending;
+  const isEmpty = !message.content && !message.error && message.pending && !message.interrupt;
+  const { resumeInterrupt, isSending } = useChat();
 
   return (
     <View
@@ -63,6 +66,46 @@ export function MessageBubble({ message }: Props) {
                 </Text>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Human-in-the-Loop interrupt cards */}
+        {!isUser && message.interrupt && (
+          <View style={styles.interruptContainer}>
+            <Text style={styles.interruptQuestion}>{message.interrupt.question}</Text>
+            <View style={styles.interruptOptions}>
+              {message.interrupt.options.map((opt) => {
+                const isSelected = message.interrupt?.selected === opt.label;
+                const anySelected = !!message.interrupt?.selected;
+                return (
+                  <Pressable
+                    key={opt.id}
+                    style={({ pressed }) => [
+                      styles.interruptOption,
+                      isSelected && styles.interruptOptionSelected,
+                      anySelected && !isSelected && styles.interruptOptionDimmed,
+                      pressed && !anySelected && !isSending && styles.interruptOptionPressed,
+                    ]}
+                    onPress={() => {
+                      if (!anySelected && !isSending) {
+                        resumeInterrupt(opt.label);
+                      }
+                    }}
+                    disabled={anySelected || isSending}
+                  >
+                    <Text
+                      style={[
+                        styles.interruptOptionText,
+                        isSelected && styles.interruptOptionTextSelected,
+                        anySelected && !isSelected && styles.interruptOptionTextDimmed,
+                      ]}
+                    >
+                      {isSelected ? '✓ ' : ''}{opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         )}
 
@@ -273,6 +316,51 @@ const styles = StyleSheet.create({
   attachmentName: {
     color: colors.textMuted,
     fontSize: 13,
+  },
+  interruptContainer: {
+    marginBottom: spacing.sm,
+  },
+  interruptQuestion: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+    lineHeight: 20,
+  },
+  interruptOptions: {
+    flexDirection: 'column',
+  },
+  interruptOption: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  interruptOptionSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  interruptOptionDimmed: {
+    borderColor: colors.border,
+    opacity: 0.45,
+  },
+  interruptOptionPressed: {
+    backgroundColor: colors.bgInput,
+  },
+  interruptOptionText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  interruptOptionTextSelected: {
+    color: colors.primaryText,
+    fontWeight: '600',
+  },
+  interruptOptionTextDimmed: {
+    color: colors.textMuted,
   },
   toolCallList: {
     flexDirection: 'row',

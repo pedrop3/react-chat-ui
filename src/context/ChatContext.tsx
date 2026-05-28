@@ -9,9 +9,9 @@ import React, {
   useState,
 } from 'react';
 import uuid from 'react-native-uuid';
-import { Attachment, Conversation, Message, ToolCallInfo } from '@/types';
+import { Attachment, Conversation, InterruptInfo, Message, ToolCallInfo } from '@/types';
 import { loadConversations, saveConversations } from '@/storage/conversations';
-import { sendChatRest, sendChatStream } from '@/api/client';
+import { resumeChatStream, sendChatRest, sendChatStream } from '@/api/client';
 import { STREAMING_ENABLED } from '@/api/config';
 
 interface ChatContextValue {
@@ -24,6 +24,8 @@ interface ChatContextValue {
   deleteConversation: (id: string) => void;
   sendMessage: (text: string, attachments?: Attachment[]) => Promise<void>;
   stopSending: () => void;
+  /** Retoma um grafo pausado num interrupt; value = label da opção escolhida. */
+  resumeInterrupt: (value: string) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -208,12 +210,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         );
       };
 
+      const onInterrupt = (info: InterruptInfo) => {
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== convId) return c;
+            return {
+              ...c,
+              messages: c.messages.map((m) => {
+                if (m.id !== assistantMsg.id) return m;
+                return { ...m, interrupt: info, pending: false };
+              }),
+            };
+          }),
+        );
+      };
+
       try {
         const result = STREAMING_ENABLED
           ? await sendChatStream(convId, history, attachments, {
               signal: controller.signal,
               onChunk,
               onToolCall,
+              onInterrupt,
             })
           : await sendChatRest(convId, history, attachments, {
               signal: controller.signal,
@@ -259,6 +277,149 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [activeId, active, updateActive],
   );
 
+  const resumeInterrupt = useCallback(
+    async (selectedLabel: string) => {
+      if (!activeId) return;
+      const convId = activeId;
+
+      // 1. Mark the interrupted assistant message as resolved
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== convId) return c;
+          return {
+            ...c,
+            messages: c.messages.map((m) => {
+              if (!m.interrupt || m.interrupt.selected) return m;
+              return { ...m, interrupt: { ...m.interrupt, selected: selectedLabel } };
+            }),
+          };
+        }),
+      );
+
+      // 2. Add a new pending assistant message for the resumed response
+      const resumeMsg: Message = {
+        id: makeId(),
+        role: 'assistant',
+        content: '',
+        createdAt: Date.now(),
+        pending: true,
+      };
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === convId
+            ? { ...c, updatedAt: Date.now(), messages: [...c.messages, resumeMsg] }
+            : c,
+        ),
+      );
+
+      setIsSending(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const onChunk = (_delta: string, fullText: string) => {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === convId
+              ? {
+                  ...c,
+                  updatedAt: Date.now(),
+                  messages: c.messages.map((m) =>
+                    m.id === resumeMsg.id ? { ...m, content: fullText } : m,
+                  ),
+                }
+              : c,
+          ),
+        );
+      };
+
+      const onToolCall = (info: ToolCallInfo) => {
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== convId) return c;
+            return {
+              ...c,
+              messages: c.messages.map((m) => {
+                if (m.id !== resumeMsg.id) return m;
+                const existing = m.toolCalls ?? [];
+                if (info.status === 'running') {
+                  return { ...m, toolCalls: [...existing, info] };
+                }
+                return {
+                  ...m,
+                  toolCalls: existing.map((tc) =>
+                    tc.id === info.id ? { ...tc, status: 'done' as const } : tc,
+                  ),
+                };
+              }),
+            };
+          }),
+        );
+      };
+
+      const onInterrupt = (info: InterruptInfo) => {
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== convId) return c;
+            return {
+              ...c,
+              messages: c.messages.map((m) => {
+                if (m.id !== resumeMsg.id) return m;
+                return { ...m, interrupt: info, pending: false };
+              }),
+            };
+          }),
+        );
+      };
+
+      try {
+        const result = await resumeChatStream(convId, selectedLabel, {
+          signal: controller.signal,
+          onChunk,
+          onToolCall,
+          onInterrupt,
+        });
+
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === convId
+              ? {
+                  ...c,
+                  updatedAt: Date.now(),
+                  messages: c.messages.map((m) =>
+                    m.id === resumeMsg.id
+                      ? { ...m, content: result.text, pending: false }
+                      : m,
+                  ),
+                }
+              : c,
+          ),
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === convId
+              ? {
+                  ...c,
+                  updatedAt: Date.now(),
+                  messages: c.messages.map((m) =>
+                    m.id === resumeMsg.id
+                      ? { ...m, content: '', pending: false, error: msg }
+                      : m,
+                  ),
+                }
+              : c,
+          ),
+        );
+      } finally {
+        abortRef.current = null;
+        setIsSending(false);
+      }
+    },
+    [activeId],
+  );
+
   const value: ChatContextValue = {
     conversations,
     activeId,
@@ -269,6 +430,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     deleteConversation,
     sendMessage,
     stopSending,
+    resumeInterrupt,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

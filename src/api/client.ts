@@ -1,5 +1,5 @@
 import { API_BASE_URL, ENDPOINTS, STREAMING_ENABLED } from './config';
-import { Attachment, Message, SendOptions, SendResult } from '@/types';
+import { Attachment, InterruptInfo, InterruptOption, Message, SendOptions, SendResult } from '@/types';
 
 interface ChatPayload {
   conversationId: string;
@@ -143,12 +143,109 @@ export async function sendChatStream(
             name: '',
             status: 'done',
           });
+        } else if (evType === 'INTERRUPT') {
+          const info: InterruptInfo = {
+            question: (ev.question as string) ?? '',
+            options: (ev.options as InterruptOption[]) ?? [],
+          };
+          opts.onInterrupt?.(info);
         } else if (evType === 'RUN_FINISHED') {
           return { text: full };
         } else if (evType === 'RUN_ERROR') {
           throw new Error((ev.message as string) ?? 'Stream error');
         }
         // TEXT_MESSAGE_START, TEXT_MESSAGE_END, RUN_STARTED: sem ação no cliente
+      }
+    }
+  }
+
+  return { text: full };
+}
+
+/**
+ * Retoma um grafo pausado num interrupt (Human-in-the-Loop).
+ * Envia o valor escolhido pelo utilizador e recebe a resposta em streaming.
+ */
+export async function resumeChatStream(
+  conversationId: string,
+  value: string,
+  opts: SendOptions = {},
+): Promise<SendResult> {
+  const url = `${API_BASE_URL}${ENDPOINTS.chatResume}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify({ conversationId, value }),
+    signal: opts.signal,
+  });
+
+  if (!res.ok || !res.body) {
+    const txt = await safeText(res);
+    throw new Error(`Resume ${res.status}: ${txt || res.statusText}`);
+  }
+
+  const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let full = '';
+
+  while (true) {
+    const { value: chunk, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(chunk, { stream: true });
+
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+      const rawEvent = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const lines = rawEvent.split('\n');
+
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+
+        let ev: Record<string, unknown>;
+        try {
+          ev = JSON.parse(payload) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+
+        const evType = ev.type as string | undefined;
+
+        if (evType === 'TEXT_MESSAGE_DELTA') {
+          const delta = (ev.delta as string) ?? '';
+          if (delta) {
+            full += delta;
+            opts.onChunk?.(delta, full);
+          }
+        } else if (evType === 'TOOL_CALL_START') {
+          opts.onToolCall?.({
+            id: (ev.toolCallId as string) ?? '',
+            name: (ev.toolCallName as string) ?? '',
+            status: 'running',
+          });
+        } else if (evType === 'TOOL_CALL_END') {
+          opts.onToolCall?.({
+            id: (ev.toolCallId as string) ?? '',
+            name: '',
+            status: 'done',
+          });
+        } else if (evType === 'INTERRUPT') {
+          const info: InterruptInfo = {
+            question: (ev.question as string) ?? '',
+            options: (ev.options as InterruptOption[]) ?? [],
+          };
+          opts.onInterrupt?.(info);
+        } else if (evType === 'RUN_FINISHED') {
+          return { text: full };
+        } else if (evType === 'RUN_ERROR') {
+          throw new Error((ev.message as string) ?? 'Resume stream error');
+        }
       }
     }
   }
