@@ -11,7 +11,7 @@ import React, {
 import uuid from 'react-native-uuid';
 import { Attachment, Conversation, InterruptInfo, Message, ToolCallInfo } from '@/types';
 import { loadConversations, saveConversations } from '@/storage/conversations';
-import { resumeChatStream, sendChatRest, sendChatStream } from '@/api/client';
+import { resumeChatStream, sendChatRest, sendChatStream, sendFeedback as apiFeedback } from '@/api/client';
 import { STREAMING_ENABLED } from '@/api/config';
 
 interface ChatContextValue {
@@ -26,6 +26,8 @@ interface ChatContextValue {
   stopSending: () => void;
   /** Retoma um grafo pausado num interrupt; value = label da opção escolhida. */
   resumeInterrupt: (value: string) => Promise<void>;
+  /** Envia feedback  para uma mensagem do assistente. */
+  submitFeedback: (messageId: string, vote: 'up' | 'down') => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -153,6 +155,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         content: '',
         createdAt: Date.now(),
         pending: true,
+        question: trimmed,
       };
 
       updateActive((c) => ({
@@ -420,6 +423,57 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [activeId],
   );
 
+  const submitFeedback = useCallback(
+    async (messageId: string, vote: 'up' | 'down') => {
+      if (!activeId) return;
+      const convId = activeId;
+
+      // Find the message to get its content and question
+      const conv = conversations.find((c) => c.id === convId);
+      const msg = conv?.messages.find((m) => m.id === messageId);
+      if (!msg || msg.feedback) return; // already voted
+
+      // Optimistic update: mark the vote immediately
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== convId) return c;
+          return {
+            ...c,
+            messages: c.messages.map((m) =>
+              m.id === messageId ? { ...m, feedback: vote } : m,
+            ),
+          };
+        }),
+      );
+
+      try {
+        await apiFeedback({
+          feedbackId: makeId(),
+          conversationId: convId,
+          messageId,
+          question: msg.question ?? '',
+          answer: msg.content,
+          vote,
+        });
+      } catch (err) {
+        console.warn('[feedback] failed to send:', err);
+        // Revert optimistic update on error
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== convId) return c;
+            return {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === messageId ? { ...m, feedback: undefined } : m,
+              ),
+            };
+          }),
+        );
+      }
+    },
+    [activeId, conversations],
+  );
+
   const value: ChatContextValue = {
     conversations,
     activeId,
@@ -431,6 +485,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     sendMessage,
     stopSending,
     resumeInterrupt,
+    submitFeedback,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

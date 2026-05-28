@@ -23,7 +23,7 @@ export function MessageBubble({ message }: Props) {
   const isUser = message.role === 'user';
   const hasError = !!message.error;
   const isEmpty = !message.content && !message.error && message.pending && !message.interrupt;
-  const { resumeInterrupt, isSending } = useChat();
+  const { resumeInterrupt, isSending, submitFeedback } = useChat();
 
   return (
     <View
@@ -122,6 +122,42 @@ export function MessageBubble({ message }: Props) {
           <Markdown style={mdStyles}>
             {(message.content ?? '') + (message.pending ? '▍' : '')}
           </Markdown>
+        )}
+
+        {/* Feedback buttons — visible only for completed assistant messages */}
+        {!isUser && !message.pending && !hasError && !!message.content && (
+          <View style={styles.feedbackRow}>
+            <Pressable
+              style={[
+                styles.feedbackBtn,
+                message.feedback === 'up' && styles.feedbackBtnActive,
+                !!message.feedback && message.feedback !== 'up' && styles.feedbackBtnDimmed,
+              ]}
+              onPress={() => submitFeedback(message.id, 'up')}
+              disabled={!!message.feedback}
+              accessibilityLabel="Resposta útil"
+            >
+              <Text style={[
+                styles.feedbackIcon,
+                message.feedback === 'up' && styles.feedbackIconActive,
+              ]}>👍</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.feedbackBtn,
+                message.feedback === 'down' && styles.feedbackBtnActive,
+                !!message.feedback && message.feedback !== 'down' && styles.feedbackBtnDimmed,
+              ]}
+              onPress={() => submitFeedback(message.id, 'down')}
+              disabled={!!message.feedback}
+              accessibilityLabel="Resposta não útil"
+            >
+              <Text style={[
+                styles.feedbackIcon,
+                message.feedback === 'down' && styles.feedbackIconActive,
+              ]}>👎</Text>
+            </Pressable>
+          </View>
         )}
       </View>
     </View>
@@ -398,5 +434,31 @@ const styles = StyleSheet.create({
   },
   tcNameDone: {
     color: colors.textMuted,
+  },
+  feedbackRow: {
+    flexDirection: 'row',
+    marginTop: spacing.xs,
+    gap: spacing.xs,
+  },
+  feedbackBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  feedbackBtnActive: {
+    backgroundColor: colors.bg,
+    borderColor: colors.primary,
+  },
+  feedbackBtnDimmed: {
+    opacity: 0.35,
+  },
+  feedbackIcon: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  feedbackIconActive: {
+    // emoji styling is limited; the border/bg on the button is the real indicator
   },
 });

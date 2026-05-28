@@ -290,6 +290,39 @@ export async function uploadFile(file: Attachment): Promise<{ id: string; url?: 
   return (await res.json()) as { id: string; url?: string };
 }
 
+/**
+ * Envia voto de feedback  para o backend.
+ * O backend re-executa rag_search(question) para aproximar os chunks usados
+ * e incrementa feedback_positive / feedback_negative nos Chunk nodes.
+ */
+export async function sendFeedback(params: {
+  feedbackId: string;
+  conversationId: string;
+  messageId: string;
+  question: string;
+  answer: string;
+  vote: 'up' | 'down';
+}): Promise<{ ok: boolean; chunks_updated: number }> {
+  const url = `${API_BASE_URL}${ENDPOINTS.feedback}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      feedbackId: params.feedbackId,
+      conversationId: params.conversationId,
+      messageId: params.messageId,
+      question: params.question,
+      answer: params.answer,
+      vote: params.vote,
+    }),
+  });
+  if (!res.ok) {
+    const txt = await safeText(res);
+    throw new Error(`Feedback ${res.status}: ${txt || res.statusText}`);
+  }
+  return (await res.json()) as { ok: boolean; chunks_updated: number };
+}
+
 async function safeText(res: Response): Promise<string> {
   try {
     return await res.text();

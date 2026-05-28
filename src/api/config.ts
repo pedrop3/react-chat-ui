@@ -25,4 +25,5 @@ export const ENDPOINTS = {
   chatStream: '/chat/stream',
   chatResume: '/chat/resume',
   upload: '/upload',
+  feedback: '/feedback',
 };

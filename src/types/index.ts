@@ -46,6 +46,10 @@ export interface Message {
   toolCalls?: ToolCallInfo[];
   /** preenchido quando o backend emite um evento INTERRUPT (clarificação) */
   interrupt?: InterruptInfo;
+  /** pergunta que originou esta resposta (usado para enviar feedback) */
+  question?: string;
+  /** voto de feedback do utilizador nesta mensagem */
+  feedback?: 'up' | 'down';
 }
 
 export interface Conversation {
