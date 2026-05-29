@@ -11,6 +11,7 @@ import React, {
 import uuid from 'react-native-uuid';
 import { Attachment, Conversation, InterruptInfo, Message, ToolCallInfo } from '@/types';
 import { loadConversations, saveConversations } from '@/storage/conversations';
+import { getUserId } from '@/storage/userId';
 import { resumeChatStream, sendChatRest, sendChatStream, sendFeedback as apiFeedback } from '@/api/client';
 import { STREAMING_ENABLED } from '@/api/config';
 
@@ -45,12 +46,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [userId, setUserId] = useState<string>('');
   const abortRef = useRef<AbortController | null>(null);
   const hydratedRef = useRef(false);
 
-  // Carregar persistido
+  // Carregar userId estável e conversas persistidas
   useEffect(() => {
     (async () => {
+      const uid = await getUserId();
+      setUserId(uid);
       const stored = await loadConversations();
       if (stored.length === 0) {
         const fresh: Conversation = {
@@ -235,10 +239,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               onChunk,
               onToolCall,
               onInterrupt,
-            })
+            }, userId)
           : await sendChatRest(convId, history, attachments, {
               signal: controller.signal,
-            });
+            }, userId);
 
         setConversations((prev) =>
           prev.map((c) =>

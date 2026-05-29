@@ -3,6 +3,7 @@ import { Attachment, InterruptInfo, InterruptOption, Message, SendOptions, SendR
 
 interface ChatPayload {
   conversationId: string;
+  userId?: string;
   messages: { role: string; content: string }[];
   attachments?: Attachment[];
 }
@@ -11,9 +12,11 @@ function buildPayload(
   conversationId: string,
   messages: Message[],
   attachments?: Attachment[],
+  userId?: string,
 ): ChatPayload {
   return {
     conversationId,
+    userId,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
     attachments: attachments?.map((a) => ({
       id: a.id,
@@ -35,12 +38,13 @@ export async function sendChatRest(
   messages: Message[],
   attachments?: Attachment[],
   opts: SendOptions = {},
+  userId?: string,
 ): Promise<SendResult> {
   const url = `${API_BASE_URL}${ENDPOINTS.chat}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildPayload(conversationId, messages, attachments)),
+    body: JSON.stringify(buildPayload(conversationId, messages, attachments, userId)),
     signal: opts.signal,
   });
 
@@ -76,6 +80,7 @@ export async function sendChatStream(
   messages: Message[],
   attachments?: Attachment[],
   opts: SendOptions = {},
+  userId?: string,
 ): Promise<SendResult> {
   const url = `${API_BASE_URL}${ENDPOINTS.chatStream}`;
   const res = await fetch(url, {
@@ -84,7 +89,7 @@ export async function sendChatStream(
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
     },
-    body: JSON.stringify(buildPayload(conversationId, messages, attachments)),
+    body: JSON.stringify(buildPayload(conversationId, messages, attachments, userId)),
     signal: opts.signal,
   });
 
